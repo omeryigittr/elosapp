@@ -1,0 +1,75 @@
+@inject LocalizationService L
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<div class="bottom-nav-inner">
+    <button type="button" class="bottom-nav-link @(IsActive("/") ? "active" : string.Empty)" @onclick="NavigateHome">
+        <span class="bottom-icon">⌂</span>
+        <span>@L.T("home")</span>
+    </button>
+    <button type="button" class="bottom-nav-link @(IsActive("/care") ? "active" : string.Empty)" @onclick="NavigateCare">
+        <span class="bottom-icon">♡</span>
+        <span>@L.T("care")</span>
+    </button>
+    <button type="button" class="bottom-nav-link emergency-nav-link @(IsActive("/panic") ? "active" : string.Empty)" @onclick="NavigatePanic">
+        <span class="emergency-nav-icon">!</span>
+        <span>@L.T("panic")</span>
+    </button>
+    <button type="button" class="bottom-nav-link @(IsActive("/medical-log") ? "active" : string.Empty)" @onclick="NavigateMedical">
+        <span class="bottom-icon">♡</span>
+        <span>@L.T("medical")</span>
+    </button>
+    <button type="button" class="bottom-nav-link @(IsActive("/settings") ? "active" : string.Empty)" @onclick="NavigateSettings">
+        <span class="bottom-icon">⚙</span>
+        <span>@L.T("settings")</span>
+    </button>
+</div>
+
+@code {
+    private string _currentPath = "/";
+
+    protected override void OnInitialized()
+    {
+        L.Changed += Refresh;
+        Navigation.LocationChanged += OnLocationChanged;
+        UpdateCurrentPath();
+    }
+
+    private void UpdateCurrentPath()
+    {
+        _currentPath = new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/');
+        if (string.IsNullOrEmpty(_currentPath))
+            _currentPath = "/";
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        UpdateCurrentPath();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private bool IsActive(string path) => string.Equals(_currentPath, path, StringComparison.OrdinalIgnoreCase);
+
+    private Task NavigateAsync(string path)
+    {
+        if (IsActive(path))
+            return Task.CompletedTask;
+
+        Navigation.NavigateTo(path);
+        return Task.CompletedTask;
+    }
+
+    private Task NavigateHome() => NavigateAsync("/");
+    private Task NavigateCare() => NavigateAsync("/care");
+    private Task NavigatePanic() => NavigateAsync("/panic");
+    private Task NavigateMedical() => NavigateAsync("/medical-log");
+    private Task NavigateSettings() => NavigateAsync("/settings");
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        L.Changed -= Refresh;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

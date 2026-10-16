@@ -1,0 +1,174 @@
+@page "/medical-log"
+@using System.Text
+@using Microsoft.Maui.ApplicationModel.DataTransfer
+@using Microsoft.Maui.Media
+@inject DatabaseService Database
+@inject LocalizationService L
+@using MedicalLogModel = ElosApp.Models.MedicalLog
+
+<div class="page-content">
+    <div class="page-heading-row">
+        <div><span class="eyebrow">E.L.O.S.</span><h1>@L.T("medical")</h1></div>
+        <button class="small-action" @onclick="CreateDoctorReport">@(L.IsEnglish ? "Doctor report" : "Doktor raporu")</button>
+    </div>
+    <p class="muted">@(L.IsEnglish ? "Track temperature, weight, medicine, feeding and symptoms in one place." : "Ateş, kilo, ilaç, beslenme ve belirtileri tek yerde takip edin.")</p>
+
+    <EditForm Model="_log" OnValidSubmit="SaveAsync" class="card">
+        <div class="form-grid">
+            <div class="form-group">
+                <label class="form-label">Tarih</label>
+                <input class="form-control" type="date" @bind="_logDate" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Saat</label>
+                <input class="form-control" type="time" @bind="_logTime" />
+            </div>
+        </div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label class="form-label">Ateş (°C)</label>
+                <InputNumber class="form-control" @bind-Value="_log.AtesDerecesi" step="0.1" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Kilo (kg)</label>
+                <InputNumber class="form-control" @bind-Value="_log.KiloKg" step="0.01" />
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Belirti</label>
+            <InputText class="form-control" @bind-Value="_log.Belirti" placeholder="Örn. huzursuzluk, öksürük..." />
+        </div>
+        <div class="form-grid">
+            <div class="form-group"><label class="form-label">İlaç / doz</label><InputText class="form-control" @bind-Value="_log.Ilaclar" /></div>
+            <div class="form-group"><label class="form-label">Beslenme</label><InputText class="form-control" @bind-Value="_log.Beslenme" placeholder="Mama / emzirme" /></div>
+        </div>
+        <div class="form-grid">
+            <div class="form-group"><label class="form-label">Uyku</label><InputText class="form-control" @bind-Value="_log.Uyku" placeholder="Saat / kalite" /></div>
+            <div class="form-group"><label class="form-label">Bez durumu</label><InputText class="form-control" @bind-Value="_log.BezDurumu" /></div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Not</label>
+            <InputTextArea class="form-control" @bind-Value="_log.Not" rows="3" />
+        </div>
+        <div class="medical-actions">
+            <button class="btn btn-action" type="submit">@(_editing ? (L.IsEnglish ? "Update record" : "Kaydı güncelle") : (L.IsEnglish ? "Add to log" : "Günlüğe ekle"))</button>
+            <button class="btn btn-outline" type="button" @onclick="PickPhotoAsync">📷 @(L.IsEnglish ? "Add photo" : "Fotoğraf ekle")</button>
+            @if (_editing)
+            {
+                <button class="btn btn-ghost" type="button" @onclick="ResetForm">@(L.IsEnglish ? "Cancel" : "Vazgeç")</button>
+            }
+        </div>
+        @if (!string.IsNullOrWhiteSpace(_log.FotoğrafYolu))
+        {
+            <small class="muted">Fotoğraf eklendi: @_log.FotoğrafYolu</small>
+        }
+    </EditForm>
+
+    @if (!string.IsNullOrWhiteSpace(_report))
+    {
+        <section class="report-card">
+            <h2>Doktor raporu hazır</h2>
+            <pre>@_report</pre>
+            <button class="btn btn-action" @onclick="ShareReportAsync">Raporu paylaş</button>
+        </section>
+    }
+
+    <div class="log-list">
+        @foreach (var log in _logs)
+        {
+            <article class="card log-card">
+                <div class="log-card-header">
+                    <strong>@log.TarihSaat.ToString("dd.MM.yyyy HH:mm")</strong>
+                    <div>
+                        <button class="icon-button" title="Düzenle" @onclick="() => Edit(log)">✎</button>
+                        <button class="icon-button danger-text" title="Sil" @onclick="() => DeleteAsync(log.Id)">×</button>
+                    </div>
+                </div>
+                <div class="log-metrics">
+                    <span>Ateş <b>@log.AtesDerecesi.ToString("F1")°</b></span>
+                    <span>Kilo <b>@(log.KiloKg > 0 ? $"{log.KiloKg:F2} kg" : "-")</b></span>
+                </div>
+                <p>@log.Belirti</p>
+                @if (!string.IsNullOrWhiteSpace(log.Ilaclar)) { <small>İlaç: @log.Ilaclar</small> }
+                @if (!string.IsNullOrWhiteSpace(log.Not)) { <p class="muted">@log.Not</p> }
+            </article>
+        }
+    </div>
+</div>
+
+@code {
+    private MedicalLogModel _log = NewLog();
+    private IReadOnlyList<MedicalLogModel> _logs = Array.Empty<MedicalLogModel>();
+    private DateTime _logDate = DateTime.Today;
+    private TimeOnly _logTime = TimeOnly.FromDateTime(DateTime.Now);
+    private bool _editing;
+    private string _report = string.Empty;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task SaveAsync()
+    {
+        _log.TarihSaat = _logDate.Date + _logTime.ToTimeSpan();
+        await Database.SaveMedicalLogAsync(_log);
+        ResetForm();
+        await LoadAsync();
+    }
+
+    private void Edit(MedicalLogModel log)
+    {
+        _log = new MedicalLogModel
+        {
+            Id = log.Id, TarihSaat = log.TarihSaat, AtesDerecesi = log.AtesDerecesi, KiloKg = log.KiloKg,
+            Belirti = log.Belirti, Not = log.Not, Ilaclar = log.Ilaclar, Beslenme = log.Beslenme,
+            Uyku = log.Uyku, BezDurumu = log.BezDurumu, FotoğrafYolu = log.FotoğrafYolu
+        };
+        _logDate = log.TarihSaat.Date;
+        _logTime = TimeOnly.FromDateTime(log.TarihSaat);
+        _editing = true;
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        await Database.DeleteMedicalLogAsync(id);
+        await LoadAsync();
+    }
+
+    private async Task PickPhotoAsync()
+    {
+        var photos = await MediaPicker.Default.PickPhotosAsync(new MediaPickerOptions
+        {
+            SelectionLimit = 1
+        });
+        var photo = photos.FirstOrDefault();
+        if (photo is not null)
+            _log.FotoğrafYolu = photo.FullPath;
+    }
+
+    private void CreateDoctorReport()
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("E.L.O.S. - DOKTOR GÖRÜŞME RAPORU");
+        builder.AppendLine($"Oluşturulma: {DateTime.Now:dd.MM.yyyy HH:mm}");
+        builder.AppendLine(new string('-', 35));
+        foreach (var log in _logs.OrderBy(item => item.TarihSaat))
+        {
+            builder.AppendLine($"{log.TarihSaat:dd.MM.yyyy HH:mm} | Ateş: {log.AtesDerecesi:F1} C | Kilo: {log.KiloKg:F2} kg");
+            builder.AppendLine($"Belirti: {log.Belirti}");
+            builder.AppendLine($"İlaç: {log.Ilaclar} | Beslenme: {log.Beslenme} | Uyku: {log.Uyku}");
+            builder.AppendLine($"Not: {log.Not}");
+            builder.AppendLine();
+        }
+        _report = builder.ToString();
+    }
+
+    private async Task ShareReportAsync() => await Share.Default.RequestAsync(new ShareTextRequest { Text = _report, Title = "E.L.O.S. Doktor Raporu" });
+    private async Task LoadAsync() => _logs = await Database.GetMedicalLogsAsync();
+    private void ResetForm()
+    {
+        _log = NewLog();
+        _logDate = DateTime.Today;
+        _logTime = TimeOnly.FromDateTime(DateTime.Now);
+        _editing = false;
+    }
+    private static MedicalLogModel NewLog() => new();
+}

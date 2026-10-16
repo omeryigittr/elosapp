@@ -1,0 +1,181 @@
+@page "/medications"
+@using ElosApp.Models
+@inject DatabaseService Database
+@inject LocalizationService L
+
+<div class="page-content">
+    <div class="page-heading-row">
+        <div>
+            <span class="eyebrow">E.L.O.S. CARE</span>
+            <h1>@L.T("medications")</h1>
+        </div>
+        <button class="small-action" type="button" @onclick="StartNew">+ @(L.IsEnglish ? "Add" : "Ekle")</button>
+    </div>
+    <p class="muted medication-intro">@(L.IsEnglish ? "Keep medicines and vaccines organized, even offline." : "İlaçları ve aşıları internet olmadan düzenli takip edin.")</p>
+
+    @if (_nextReminder is not null)
+    {
+        <section class="next-dose-card">
+            <span class="eyebrow">@(L.IsEnglish ? "NEXT DOSE" : "SIRADAKİ DOZ")</span>
+            <strong>@_nextReminder.Name</strong>
+            <span>@_nextReminder.Dose · @_nextReminder.NextDose.ToString("dd MMM, HH:mm") · <b>@RemainingText</b></span>
+            <button class="btn btn-action" type="button" @onclick="() => CompleteAsync(_nextReminder.Id)">
+                @(L.IsEnglish ? "Mark as given" : "Verildi olarak işaretle")
+            </button>
+        </section>
+    }
+
+    @if (_isEditing)
+    {
+        <section class="card medication-form">
+            <h2>@(_editing.Id == 0 ? (L.IsEnglish ? "New reminder" : "Yeni hatırlatıcı") : (L.IsEnglish ? "Edit reminder" : "Hatırlatıcıyı düzenle"))</h2>
+            <label class="form-group">
+                <span class="form-label">@(L.IsEnglish ? "Medicine or vaccine" : "İlaç veya aşı")</span>
+                <input @bind="_editing.Name" maxlength="120" placeholder="Örn. D vitamini" />
+            </label>
+            <div class="form-grid">
+                <label class="form-group">
+                    <span class="form-label">@(L.IsEnglish ? "Dose" : "Doz")</span>
+                    <input @bind="_editing.Dose" maxlength="80" placeholder="Örn. 5 damla" />
+                </label>
+                <label class="form-group">
+                    <span class="form-label">@(L.IsEnglish ? "Date and time" : "Tarih ve saat")</span>
+                    <input type="datetime-local" @bind="_nextDoseInput" />
+                </label>
+            </div>
+            <label class="check-row">
+                <input type="checkbox" @bind="_editing.IsVaccine" />
+                <span>@(L.IsEnglish ? "This is a vaccine" : "Bu bir aşı")</span>
+            </label>
+            <div class="medical-actions">
+                <button class="btn btn-action" type="button" @onclick="SaveAsync" disabled="@_isSaving">@(L.IsEnglish ? "Save" : "Kaydet")</button>
+                <button class="btn btn-ghost" type="button" @onclick="CancelEdit">@(L.IsEnglish ? "Cancel" : "Vazgeç")</button>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(_error))
+            {
+                <p class="form-error">@_error</p>
+            }
+        </section>
+    }
+
+    <div class="medication-list">
+        @if (_reminders.Count == 0)
+        {
+            <section class="empty-card">
+                <div class="empty-icon">✚</div>
+                <strong>@(L.IsEnglish ? "No reminders yet" : "Henüz hatırlatıcı yok")</strong>
+                <p class="muted">@(L.IsEnglish ? "Add the next medicine or vaccine time." : "Bir sonraki ilaç veya aşı zamanını ekleyin.")</p>
+                <button class="btn btn-outline" type="button" @onclick="StartNew">@(L.IsEnglish ? "Create first reminder" : "İlk hatırlatıcıyı oluştur")</button>
+            </section>
+        }
+        else
+        {
+            @foreach (var reminder in _reminders)
+            {
+                <article class="card medication-card @(reminder.IsCompleted ? "completed" : string.Empty)">
+                    <div class="medication-icon">@(reminder.IsVaccine ? "♢" : "✚")</div>
+                    <div class="medication-copy">
+                        <strong>@reminder.Name</strong>
+                        <span>@reminder.Dose · @reminder.NextDose.ToString("dd.MM.yyyy HH:mm")</span>
+                        <small>@(reminder.IsCompleted ? (L.IsEnglish ? "Completed" : "Tamamlandı") : (reminder.IsVaccine ? (L.IsEnglish ? "Vaccine" : "Aşı") : (L.IsEnglish ? "Medicine" : "İlaç")))</small>
+                    </div>
+                    <div class="medication-actions">
+                        @if (!reminder.IsCompleted)
+                        {
+                            <button class="icon-button" title="@(L.IsEnglish ? "Complete" : "Tamamla")" type="button" @onclick="() => CompleteAsync(reminder.Id)">✓</button>
+                        }
+                        <button class="icon-button" title="@(L.IsEnglish ? "Edit" : "Düzenle")" type="button" @onclick="() => Edit(reminder)">✎</button>
+                        <button class="icon-button danger-text" title="@(L.IsEnglish ? "Delete" : "Sil")" type="button" @onclick="() => DeleteAsync(reminder.Id)">×</button>
+                    </div>
+                </article>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private List<MedicationReminder> _reminders = new();
+    private MedicationReminder _editing = new();
+    private DateTime _nextDoseInput = DateTime.Now.AddHours(1);
+    private MedicationReminder? _nextReminder;
+    private bool _isEditing;
+    private bool _isSaving;
+    private string _error = string.Empty;
+    private string RemainingText => _nextReminder is null ? string.Empty : FormatRemaining(_nextReminder.NextDose - DateTime.Now);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _reminders = (await Database.GetMedicationRemindersAsync()).ToList();
+        _nextReminder = _reminders.FirstOrDefault(item => !item.IsCompleted);
+    }
+
+    private static string FormatRemaining(TimeSpan value)
+    {
+        if (value <= TimeSpan.Zero)
+            return "Şimdi";
+        return value.TotalDays >= 1
+            ? $"{(int)value.TotalDays} gün {value.Hours} sa"
+            : $"{value.Hours} sa {value.Minutes} dk";
+    }
+
+    private void StartNew()
+    {
+        _editing = new MedicationReminder();
+        _nextDoseInput = DateTime.Now.AddHours(1);
+        _error = string.Empty;
+        _isEditing = true;
+    }
+
+    private void Edit(MedicationReminder reminder)
+    {
+        _editing = new MedicationReminder
+        {
+            Id = reminder.Id,
+            Name = reminder.Name,
+            Dose = reminder.Dose,
+            NextDose = reminder.NextDose,
+            IsVaccine = reminder.IsVaccine,
+            IsCompleted = reminder.IsCompleted
+        };
+        _nextDoseInput = reminder.NextDose;
+        _error = string.Empty;
+        _isEditing = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editing.Name))
+        {
+            _error = L.IsEnglish ? "Enter a medicine or vaccine name." : "İlaç veya aşı adını girin.";
+            return;
+        }
+
+        _isSaving = true;
+        _editing.NextDose = _nextDoseInput;
+        await Database.SaveMedicationReminderAsync(_editing);
+        _isSaving = false;
+        _isEditing = false;
+        await LoadAsync();
+    }
+
+    private async Task CompleteAsync(int id)
+    {
+        var reminder = _reminders.FirstOrDefault(item => item.Id == id);
+        if (reminder is null)
+            return;
+
+        reminder.IsCompleted = true;
+        await Database.SaveMedicationReminderAsync(reminder);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        await Database.DeleteMedicationReminderAsync(id);
+        await LoadAsync();
+    }
+
+    private void CancelEdit() => _isEditing = false;
+}

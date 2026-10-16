@@ -1,0 +1,94 @@
+@page "/panic"
+@using Microsoft.Maui.ApplicationModel.Communication
+@using Microsoft.Maui.Devices.Sensors
+@inject DatabaseService Database
+@inject LocalizationService L
+
+<div class="page-content">
+    <h1>@L.T("panic")</h1>
+    <div class="card">
+        <p>@(L.IsEnglish ? "Tap the button to call, get your location and prepare an SMS." : "Telefon araması, konum tespiti ve SMS hazırlama işlemlerini başlatmak için butona dokunun.")</p>
+        <button class="btn btn-danger" @onclick="StartEmergencyAsync" disabled="@_isBusy">
+            @(_isBusy ? (L.IsEnglish ? "Working..." : "İşleniyor...") : L.T("panic").ToUpperInvariant())
+        </button>
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <div class="notice notice-error">@_error</div>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_address))
+    {
+        <div class="card" style="margin-top:1rem">
+            <h2>Konumunuz</h2>
+            <p class="location-value">@_address</p>
+            <p class="location-value">@_coordinates</p>
+        </div>
+    }
+</div>
+
+@code {
+    private BabyProfile? _profile;
+    private bool _isBusy;
+    private string _address = string.Empty;
+    private string _coordinates = string.Empty;
+    private string _error = string.Empty;
+
+    private async Task StartEmergencyAsync()
+    {
+        if (_isBusy) return;
+        _isBusy = true;
+        _error = string.Empty;
+        try
+        {
+            _profile = await Database.GetBabyProfileAsync();
+            if (_profile is null || string.IsNullOrWhiteSpace(_profile.AcilDurumNumarasi))
+            {
+                _error = "Önce Ayarlar bölümünden kendi acil durum numaranızı kaydedin.";
+                return;
+            }
+
+            PhoneDialer.Default.Open(_profile.AcilDurumNumarasi);
+            await ResolveLocationAsync();
+
+            var smsText = $"Acil bir durum var. Konumum: {_address} ({_coordinates})";
+            await Sms.Default.ComposeAsync(new SmsMessage(smsText, new[] { _profile.AcilDurumNumarasi }));
+        }
+        catch (FeatureNotSupportedException)
+        {
+            _error = "Bu cihazda arama, konum veya SMS özelliği desteklenmiyor.";
+        }
+        catch (PermissionException)
+        {
+            _error = "Konum izni verilmedi. Cihaz ayarlarından konum iznini açın.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Acil durum işlemi tamamlanamadı: {ex.Message}";
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task ResolveLocationAsync()
+    {
+        var location = await Geolocation.Default.GetLocationAsync(
+            new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(10)));
+        if (location is null)
+        {
+            _address = "Konum alınamadı";
+            _coordinates = "GPS verisi mevcut değil";
+            return;
+        }
+
+        _coordinates = $"{location.Latitude:F6}, {location.Longitude:F6}";
+        var placemarks = await Geocoding.Default.GetPlacemarksAsync(location);
+        var placemark = placemarks?.FirstOrDefault();
+        _address = placemark is null
+            ? "Açık adres alınamadı"
+            : string.Join(", ", new[] { placemark.Thoroughfare, placemark.SubThoroughfare, placemark.Locality, placemark.CountryName }
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
+    }
+}

@@ -1,0 +1,61 @@
+@page "/milk-stock"
+@using ElosApp.Models
+@inject DatabaseService Database
+@inject LocalizationService L
+
+<div class="page-content">
+    <div class="page-heading-row">
+        <div><span class="eyebrow">E.L.O.S. BABY CARE</span><h1>@(L.IsEnglish ? "Milk stock" : "Süt stoğu")</h1></div>
+        <button class="small-action" type="button" @onclick="StartNew">+ @(L.IsEnglish ? "Add" : "Ekle")</button>
+    </div>
+    <p class="muted medication-intro">@(L.IsEnglish ? "Use the oldest stored milk first and keep the freezer organized." : "En eski sütü önce kullanın, stoğunuzu düzenli takip edin.")</p>
+
+    @if (_editing)
+    {
+        <section class="card medication-form">
+            <h2>@(L.IsEnglish ? "Add expressed milk" : "Sağılan süt ekle")</h2>
+            <div class="form-grid">
+                <label class="form-group"><span class="form-label">@(L.IsEnglish ? "Amount (ml)" : "Miktar (ml)")</span><input class="form-control" type="number" min="1" step="1" @bind="_draft.MiktarMl" /></label>
+                <label class="form-group"><span class="form-label">@(L.IsEnglish ? "Expressed at" : "Sağım tarihi")</span><input class="form-control" type="datetime-local" @bind="_draft.SagimTarihi" /></label>
+            </div>
+            <div class="form-grid">
+                <label class="form-group"><span class="form-label">@(L.IsEnglish ? "Storage" : "Saklama yeri")</span><select class="form-control" @bind="_draft.SaklamaYeri"><option>Oda sıcaklığı</option><option>Buzdolabı</option><option>Derin dondurucu</option></select></label>
+                <label class="form-group"><span class="form-label">@(L.IsEnglish ? "Use by" : "Son kullanım")</span><input class="form-control" type="date" @bind="_draft.SonKullanmaTarihi" /></label>
+            </div>
+            <div class="medical-actions"><button class="btn btn-action" type="button" @onclick="SaveAsync">@(L.IsEnglish ? "Save" : "Kaydet")</button><button class="btn btn-ghost" type="button" @onclick="Cancel">@(L.IsEnglish ? "Cancel" : "Vazgeç")</button></div>
+        </section>
+    }
+
+    @if (_stocks.Count == 0)
+    {
+        <section class="empty-card"><div class="empty-icon">♡</div><strong>@(L.IsEnglish ? "No milk stock" : "Henüz süt stoğu yok")</strong><p class="muted">@(L.IsEnglish ? "Add expressed milk to start FIFO tracking." : "FIFO takibi için sağılan süt ekleyin.")</p></section>
+    }
+    else
+    {
+        <div class="milk-list">
+            @foreach (var stock in _stocks)
+            {
+                var expired = stock.SonKullanmaTarihi.Date < DateTime.Today && !stock.Tuketildi;
+                <article class="card milk-card @(stock.Tuketildi ? "completed" : string.Empty) @(expired ? "milk-expired" : string.Empty)">
+                    <div class="medication-icon">♡</div>
+                    <div class="medication-copy"><strong>@stock.MiktarMl.ToString("0") ml</strong><span>@stock.SaklamaYeri · @stock.SagimTarihi.ToString("dd.MM.yyyy HH:mm")</span><small>@(expired ? (L.IsEnglish ? "Expired" : "Süresi geçti") : $"{(L.IsEnglish ? "Use by" : "Son kullanım")}: {stock.SonKullanmaTarihi:dd.MM.yyyy}")</small></div>
+                    <div class="medication-actions">@if (!stock.Tuketildi) { <button class="icon-button" type="button" title="Tükettim" @onclick="() => ConsumeAsync(stock)">✓</button> }<button class="icon-button danger-text" type="button" title="Sil" @onclick="() => DeleteAsync(stock.Id)">×</button></div>
+                </article>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<MilkStockEntry> _stocks = new();
+    private MilkStockEntry _draft = new();
+    private bool _editing;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task LoadAsync() => _stocks = (await Database.GetMilkStocksAsync()).ToList();
+    private void StartNew() { _draft = new MilkStockEntry { SagimTarihi = DateTime.Now, SonKullanmaTarihi = DateTime.Today.AddDays(4) }; _editing = true; }
+    private void Cancel() => _editing = false;
+    private async Task SaveAsync() { if (_draft.MiktarMl <= 0) return; await Database.SaveMilkStockAsync(_draft); _editing = false; await LoadAsync(); }
+    private async Task ConsumeAsync(MilkStockEntry stock) { stock.Tuketildi = true; await Database.SaveMilkStockAsync(stock); await LoadAsync(); }
+    private async Task DeleteAsync(int id) { await Database.DeleteMilkStockAsync(id); await LoadAsync(); }
+}

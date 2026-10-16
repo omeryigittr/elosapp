@@ -1,0 +1,139 @@
+@page "/settings"
+@using Microsoft.Maui.Storage
+@inject DatabaseService Database
+@inject BackupService Backup
+@inject LocalizationService L
+
+<div class="page-content">
+    <h1>@L.T("settingsTitle")</h1>
+    <p class="muted">@L.T("savedOnDevice")</p>
+
+    <EditForm Model="_profile" OnValidSubmit="SaveAsync" class="card">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="form-group">
+            <label class="form-label" for="name">@(L.IsEnglish ? "Baby name" : "Bebeğin adı")</label>
+            <InputText id="name" class="form-control" @bind-Value="_profile.Ad" />
+            <ValidationMessage For="() => _profile.Ad" />
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="birthDate">@(L.IsEnglish ? "Birth date" : "Doğum tarihi")</label>
+            <input id="birthDate" class="form-control date-input" type="date" @bind="_profile.DogumTarihi" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+            <small class="muted">@(L.IsEnglish ? "Choose the birth date from the calendar." : "Takvimden doğum gününü seçin.")</small>
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="bloodType">@(L.IsEnglish ? "Blood type" : "Kan grubu")</label>
+            <InputText id="bloodType" class="form-control" @bind-Value="_profile.KanGrubu" />
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="allergies">@(L.IsEnglish ? "Allergies" : "Alerjiler")</label>
+            <InputTextArea id="allergies" class="form-control" @bind-Value="_profile.Alerjiler" />
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="emergency">@(L.IsEnglish ? "Emergency number" : "Acil durum numarası")</label>
+            <InputText id="emergency" class="form-control" type="tel" @bind-Value="_profile.AcilDurumNumarasi" />
+            <small class="muted">@(L.IsEnglish ? "This is not filled automatically; enter your own number." : "Bu numara varsayılan olarak doldurulmaz; kendi numaranızı girin.")</small>
+            <ValidationMessage For="() => _profile.AcilDurumNumarasi" />
+        </div>
+        <button class="btn btn-action save-button" type="submit" disabled="@_isSaving">@(_isSaving ? (L.IsEnglish ? "Saving..." : "Kaydediliyor...") : (L.IsEnglish ? "Save" : "Kaydet"))</button>
+        @if (!string.IsNullOrWhiteSpace(_message))
+        {
+            <div class="notice notice-success">@_message</div>
+        }
+    </EditForm>
+
+    <section class="card settings-tools">
+        <h2>@(L.IsEnglish ? "Private backup" : "Gizli yedekleme")</h2>
+        <div class="backup-grid">
+            <input class="form-control" type="password" @bind="_backupPassword" placeholder="Yedek şifresi (en az 6 karakter)" />
+            <button class="btn btn-action" type="button" @onclick="ExportBackupAsync">@(L.IsEnglish ? "Create encrypted .elos" : "Şifreli .elos oluştur")</button>
+            <button class="btn btn-outline" type="button" @onclick="ImportBackupAsync">@(L.IsEnglish ? "Import .elos" : ".elos içe aktar")</button>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(_backupMessage))
+        {
+            <p class="notice notice-success">@_backupMessage</p>
+        }
+    </section>
+
+    <section class="card developer-card" style="margin-top:1rem">
+        <h2>@(L.IsEnglish ? "About" : "Hakkında")</h2>
+        <p>@(L.IsEnglish ? "E.L.O.S. is designed to protect your most precious ones at all times." : "E.L.O.S., en değerlinizi her an korumak için tasarlandı.")</p>
+        <p>@L.T("website"): <a href="https://omeryigit.tr/elosapp" @onclick="OpenWebsiteAsync" @onclick:preventDefault>omeryigit.tr/elosapp</a></p>
+        <p>
+            Developed by <strong>Ömer YİĞİT</strong>
+        </p>
+    </section>
+    <section class="card developer-card support-card">
+        <h2>@L.T("support")</h2>
+        <p>@L.T("supportText")</p>
+        <a class="btn btn-action" href="https://omeryigit.tr/kahve-ismarlayin/" target="_blank" rel="noopener">☕ @L.T("coffee")</a>
+    </section>
+</div>
+
+@code {
+    private BabyProfile _profile = new();
+    private bool _isSaving;
+    private string _message = string.Empty;
+    private string _backupPassword = string.Empty;
+    private string _backupMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _profile = await Database.GetBabyProfileAsync() ?? new BabyProfile();
+    }
+
+    private async Task ExportBackupAsync()
+    {
+        _backupMessage = string.Empty;
+        try
+        {
+            var path = await Backup.ExportAsync(_backupPassword);
+            await Backup.ShareAsync(path);
+            _backupMessage = L.T("backupReady");
+        }
+        catch (Exception ex)
+        {
+            _backupMessage = ex.Message;
+        }
+    }
+
+    private async Task ImportBackupAsync()
+    {
+        _backupMessage = string.Empty;
+        try
+        {
+            var file = await FilePicker.Default.PickAsync(new PickOptions { PickerTitle = ".elos yedeği seçin" });
+            if (file is null)
+                return;
+
+            await Backup.ImportAsync(file.FullPath, _backupPassword);
+            _profile = await Database.GetBabyProfileAsync() ?? new BabyProfile();
+            _backupMessage = L.T("imported");
+        }
+        catch (Exception ex)
+        {
+            _backupMessage = ex.Message;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _message = string.Empty;
+        try
+        {
+            await Database.SaveBabyProfileAsync(_profile);
+            _message = "Profil cihazınıza kaydedildi.";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task OpenWebsiteAsync()
+    {
+        await Launcher.Default.OpenAsync("https://omeryigit.tr/elosapp");
+    }
+}

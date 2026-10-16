@@ -1,0 +1,24 @@
+@inherits LayoutComponentBase
+@inject LocalizationService L
+@implements IDisposable
+
+<div class="app-shell">
+    <div class="global-language"><button class="language-button" type="button" @onclick="L.ToggleLanguage">@L.CurrentCode</button></div>
+    <main class="main-content">
+        <article class="content">
+            @Body
+        </article>
+    </main>
+    <nav class="bottom-navigation" aria-label="Uygulama menüsü">
+        <NavMenu />
+    </nav>
+    <a class="coffee-fab" href="https://omeryigit.tr/kahve-ismarlayin/" target="_blank" rel="noopener">
+        <span>☕</span>@L.T("coffee")
+    </a>
+</div>
+
+@code {
+    protected override void OnInitialized() => L.Changed += Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    public void Dispose() => L.Changed -= Refresh;
+}

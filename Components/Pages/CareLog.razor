@@ -1,0 +1,200 @@
+@page "/care"
+@using ElosApp.Models
+@using Microsoft.Maui.Media
+@using Microsoft.Maui.Storage
+@inject DatabaseService Database
+@inject LocalizationService L
+@inject NavigationManager Navigation
+@inject IPhotoStorageService PhotoStorage
+
+<div class="page-content care-page">
+    <div class="page-heading-row">
+        <div>
+            <span class="eyebrow">E.L.O.S. BABY CARE</span>
+            <h1>@L.T("care")</h1>
+        </div>
+        <button class="small-action" type="button" @onclick="StartNewDefault">+ @(L.IsEnglish ? "Add" : "Ekle")</button>
+    </div>
+    <p class="muted medication-intro">@(L.IsEnglish ? "A simple daily record for feeding, sleep, diapers and your baby's mood." : "Beslenme, uyku, bez ve bebeğinizin genel durumunu kolayca kaydedin.")</p>
+
+    <div class="care-shortcuts">
+        <button type="button" @onclick='() => StartNew("Beslenme")'><span>♡</span>@(L.IsEnglish ? "Feeding" : "Beslenme")</button>
+        <button type="button" @onclick='() => StartNew("Uyku")'><span>☾</span>@(L.IsEnglish ? "Sleep" : "Uyku")</button>
+        <button type="button" @onclick='() => StartNew("Bez")'><span>♧</span>@(L.IsEnglish ? "Diaper" : "Bez")</button>
+        <button type="button" @onclick='() => StartNew("Durum")'><span>☺</span>@(L.IsEnglish ? "Mood" : "Durum")</button>
+    </div>
+
+    <div class="care-tools card">
+        <div>
+            <strong>@(L.IsEnglish ? "Health records" : "Sağlık kayıtları")</strong>
+            <p class="muted">@(L.IsEnglish ? "Temperature, symptoms and doctor reports." : "Ateş, belirtiler ve doktor raporları.")</p>
+        </div>
+        <div class="care-tools card">
+            <div>
+                <strong>@(L.IsEnglish ? "Breast milk stock" : "Anne sütü stoğu")</strong>
+                <p class="muted">@(L.IsEnglish ? "Track stored milk with FIFO order." : "Saklanan sütü FIFO sırasıyla takip edin.")</p>
+            </div>
+            <button class="btn btn-outline" type="button" @onclick="OpenMilkStock">@(L.IsEnglish ? "Open stock" : "Stoğu aç")</button>
+        </div>
+        <button class="btn btn-outline" type="button" @onclick="OpenMedicalLog">@(L.IsEnglish ? "Open health log" : "Tıbbi günlüğü aç")</button>
+    </div>
+    <div class="care-tools card">
+        <div>
+            <strong>@(L.IsEnglish ? "Medicines and vaccines" : "İlaç ve aşılar")</strong>
+            <p class="muted">@(L.IsEnglish ? "Track the next dose without forgetting." : "Sıradaki dozu unutmadan takip edin.")</p>
+        </div>
+        <button class="btn btn-outline" type="button" @onclick="OpenMedicationTracker">@(L.IsEnglish ? "Open tracker" : "Takibi aç")</button>
+    </div>
+
+    @if (_isEditing)
+    {
+        <EditForm Model="_editing" OnValidSubmit="SaveAsync" class="card care-form">
+            <h2>@(_editing.Id == 0 ? (L.IsEnglish ? "New care note" : "Yeni bakım kaydı") : (L.IsEnglish ? "Edit care note" : "Bakım kaydını düzenle"))</h2>
+            <div class="form-grid">
+                <label class="form-group">
+                    <span class="form-label">@(L.IsEnglish ? "Type" : "Tür")</span>
+                    <select @bind="_editing.BakimTuru">
+                        <option value="Beslenme">@(L.IsEnglish ? "Feeding" : "Beslenme")</option>
+                        <option value="Uyku">@(L.IsEnglish ? "Sleep" : "Uyku")</option>
+                        <option value="Bez">@(L.IsEnglish ? "Diaper" : "Bez")</option>
+                        <option value="Durum">@(L.IsEnglish ? "Mood" : "Genel durum")</option>
+                    </select>
+                </label>
+                <label class="form-group">
+                    <span class="form-label">@(L.IsEnglish ? "Date and time" : "Tarih ve saat")</span>
+                    <input type="datetime-local" @bind="_dateInput" />
+                </label>
+            </div>
+            <label class="form-group">
+                <span class="form-label">@(L.IsEnglish ? "Status" : "Durum")</span>
+                <input class="form-control" @bind="_editing.Durum" maxlength="120" placeholder="Örn. İştahlı, 2 saat uyudu, huzursuz" />
+            </label>
+            <label class="form-group">
+                <span class="form-label">@(L.IsEnglish ? "Details" : "Detay")</span>
+                <input class="form-control" @bind="_editing.Detay" maxlength="120" placeholder="Örn. 120 ml mama, ıslak bez" />
+            </label>
+            <label class="form-group">
+                <span class="form-label">@(L.IsEnglish ? "Note" : "Not")</span>
+                <textarea class="form-control" @bind="_editing.Not" rows="3"></textarea>
+            </label>
+            <div class="care-photo-row">
+                <button class="btn btn-outline" type="button" @onclick="PickPhotoAsync">📷 @(L.IsEnglish ? "Add photo" : "Fotoğraf ekle")</button>
+                @if (!string.IsNullOrWhiteSpace(_photoPreview))
+                {
+                    <img class="care-photo-preview" src="@_photoPreview" alt="Bebek bakım fotoğrafı" />
+                }
+            </div>
+            <div class="medical-actions">
+                <button class="btn btn-action" type="submit" disabled="@_isSaving">@(L.IsEnglish ? "Save note" : "Kaydet")</button>
+                <button class="btn btn-ghost" type="button" @onclick="CancelEdit">@(L.IsEnglish ? "Cancel" : "Vazgeç")</button>
+            </div>
+        </EditForm>
+    }
+
+    <div class="care-list">
+        @if (_logs.Count == 0)
+        {
+            <section class="empty-card">
+                <div class="empty-icon">♡</div>
+                <strong>@(L.IsEnglish ? "Start your baby's daily story" : "Bebeğinizin günlük hikayesini başlatın")</strong>
+                <p class="muted">@(L.IsEnglish ? "Record the small moments that help you understand your baby's routine." : "Bebeğinizin rutinini anlamanıza yardımcı olacak küçük anları kaydedin.")</p>
+            </section>
+        }
+        else
+        {
+            @foreach (var log in _logs)
+            {
+                <article class="card care-card">
+                    @if (!string.IsNullOrWhiteSpace(log.FotoğrafYolu))
+                    {
+                        <img class="care-card-photo" src="@GetPhotoSource(log.FotoğrafYolu)" alt="Bakım kaydı fotoğrafı" />
+                    }
+                    <div class="care-card-body">
+                        <div class="log-card-header">
+                            <div><span class="care-type">@log.BakimTuru</span><strong>@log.TarihSaat.ToString("dd.MM.yyyy HH:mm")</strong></div>
+                            <div>
+                                <button class="icon-button" type="button" title="Düzenle" @onclick="() => Edit(log)">✎</button>
+                                <button class="icon-button danger-text" type="button" title="Sil" @onclick="() => DeleteAsync(log.Id)">×</button>
+                            </div>
+                        </div>
+                        <strong class="care-status">@log.Durum</strong>
+                        @if (!string.IsNullOrWhiteSpace(log.Detay)) { <p>@log.Detay</p> }
+                        @if (!string.IsNullOrWhiteSpace(log.Not)) { <p class="muted">@log.Not</p> }
+                    </div>
+                </article>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private List<DailyCareLog> _logs = new();
+    private DailyCareLog _editing = new();
+    private DateTime _dateInput = DateTime.Now;
+    private string _photoPreview = string.Empty;
+    private bool _isEditing;
+    private bool _isSaving;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync() => _logs = (await Database.GetCareLogsAsync()).ToList();
+
+    private void StartNew(string type = "Beslenme")
+    {
+        _editing = new DailyCareLog { BakimTuru = type };
+        _dateInput = DateTime.Now;
+        _photoPreview = string.Empty;
+        _isEditing = true;
+    }
+
+    private void StartNewDefault() => StartNew();
+
+    private void Edit(DailyCareLog log)
+    {
+        _editing = new DailyCareLog { Id = log.Id, TarihSaat = log.TarihSaat, BakimTuru = log.BakimTuru, Durum = log.Durum, Detay = log.Detay, Not = log.Not, FotoğrafYolu = log.FotoğrafYolu };
+        _dateInput = log.TarihSaat;
+        _photoPreview = string.IsNullOrWhiteSpace(log.FotoğrafYolu) ? string.Empty : GetPhotoSource(log.FotoğrafYolu);
+        _isEditing = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _editing.TarihSaat = _dateInput;
+        await Database.SaveCareLogAsync(_editing);
+        _isSaving = false;
+        _isEditing = false;
+        await LoadAsync();
+    }
+
+    private async Task PickPhotoAsync()
+    {
+        var photos = await MediaPicker.Default.PickPhotosAsync(new MediaPickerOptions { SelectionLimit = 1 });
+        var photo = photos.FirstOrDefault();
+        if (photo is null)
+            return;
+
+        _editing.FotoğrafYolu = await PhotoStorage.SaveOptimizedAsync(photo);
+        _photoPreview = GetPhotoSource(_editing.FotoğrafYolu);
+    }
+
+    private string GetPhotoSource(string path)
+    {
+        if (!File.Exists(path))
+            return string.Empty;
+
+        var bytes = File.ReadAllBytes(path);
+        return $"data:image/{Path.GetExtension(path).TrimStart('.')};base64,{Convert.ToBase64String(bytes)}";
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        await Database.DeleteCareLogAsync(id);
+        await LoadAsync();
+    }
+
+    private void CancelEdit() => _isEditing = false;
+    private void OpenMedicalLog() => Navigation.NavigateTo("/medical-log");
+    private void OpenMedicationTracker() => Navigation.NavigateTo("/medications");
+    private void OpenMilkStock() => Navigation.NavigateTo("/milk-stock");
+}

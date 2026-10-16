@@ -1,0 +1,69 @@
+﻿@page "/"
+@inject LocalizationService L
+@inject DatabaseService Database
+
+<div class="home-page page-content">
+    <header class="home-header">
+        <a class="logo" href=""><span class="logo-mark">E</span>E.L.O.S.</a>
+        <button class="language-button" @onclick="L.ToggleLanguage">@L.CurrentCode</button>
+    </header>
+    <p class="welcome">@(L.IsEnglish ? "Welcome back" : "Tekrar hoş geldin")</p>
+    @if (_profile is not null)
+    {
+        <section class="baby-summary card">
+            <div class="baby-avatar">♡</div>
+            <div class="baby-summary-copy">
+                <span class="muted">@(L.IsEnglish ? "Baby profile" : "Bebek profili")</span>
+                <strong>@_profile.Ad</strong>
+                <small>@AgeText</small>
+            </div>
+            <a class="profile-link" href="settings">Düzenle</a>
+        </section>
+    }
+    else
+    {
+        <a class="setup-card" href="settings">Bebek profilini oluştur <span>→</span></a>
+    }
+    <div class="hero-panel">
+        <span class="status-pill"><i></i> @(L.IsEnglish ? "Protection is active" : "Koruma aktif")</span>
+        <h1>@(L.IsEnglish ? "Your little one" : "Minik yavrunuz")<br /><em>@(L.IsEnglish ? "is safe." : "güvende.")</em></h1>
+        <p>@(L.IsEnglish ? "Everything you need for your baby's safety, always with you." : "Bebeğinizin güvenliği için ihtiyacınız olan her şey, her an yanınızda.")</p>
+        <div class="hero-orb">EL</div>
+    </div>
+
+    @code {
+        private BabyProfile? _profile;
+
+        private string AgeText
+        {
+            get
+            {
+                if (_profile is null)
+                    return string.Empty;
+
+                var today = DateTime.Today;
+                var months = (today.Year - _profile.DogumTarihi.Year) * 12 + today.Month - _profile.DogumTarihi.Month;
+                if (today.Day < _profile.DogumTarihi.Day)
+                    months--;
+                months = Math.Max(0, months);
+                var days = Math.Max(0, (today - _profile.DogumTarihi.Date).Days);
+                return months < 2
+                    ? $"{days} gün" 
+                    : $"{months} aylık • {days} gün";
+            }
+        }
+
+        protected override async Task OnInitializedAsync() => _profile = await Database.GetBabyProfileAsync();
+    }
+    <div class="quick-heading"><h2>@(L.IsEnglish ? "Quick access" : "Hızlı erişim")</h2><span>01 / 03</span></div>
+    <div class="quick-grid">
+        <a class="quick-card quick-blue" href="panic"><span class="quick-icon">!</span><strong>@L.T("panic")</strong><small>@(L.IsEnglish ? "Call and share location" : "Ara ve konum paylaş")</small></a>
+        <a class="quick-card quick-purple" href="medications"><span class="quick-icon">✚</span><strong>@L.T("medications")</strong><small>@(L.IsEnglish ? "Never miss a dose" : "Dozu unutma")</small></a>
+        <a class="quick-card quick-pink" href="care"><span class="quick-icon">♡</span><strong>@L.T("care")</strong><small>@(L.IsEnglish ? "Daily baby care" : "Günlük bebek bakımı")</small></a>
+    </div>
+    <section class="card developer-card home-developer-card">
+        <span class="eyebrow">E.L.O.S. BY ÖMER YİĞİT</span>
+        <strong>@(L.IsEnglish ? "Built for parents who want privacy." : "Gizliliğe önem veren ebeveynler için geliştirildi.")</strong>
+        <a href="https://omeryigit.tr/elosapp" target="_blank" rel="noopener">omeryigit.tr/elosapp</a>
+    </section>
+</div>

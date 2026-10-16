@@ -1,0 +1,8 @@
+.app-shell { min-height: 100vh; position: relative; }
+.main-content { min-height: 100vh; }
+.content { margin: 0 auto; max-width: 1180px; padding: calc(1rem + env(safe-area-inset-top)) 1.5rem calc(8rem + env(safe-area-inset-bottom)); }
+.bottom-navigation { background: rgba(255,255,255,.97); border-top: 1px solid #eee9fb; bottom: 0; box-shadow: 0 -10px 30px rgba(105,79,170,.12); left: 0; padding-bottom: max(env(safe-area-inset-bottom), 10px); position: fixed; right: 0; z-index: 20; }
+@media (min-width: 641px) {
+    .content { padding-left: 3rem; padding-right: 3rem; }
+    .bottom-navigation { border: 1px solid #e8e1fa; border-radius: 24px 24px 0 0; left: 50%; max-width: 680px; transform: translateX(-50%); width: 100%; }
+}
